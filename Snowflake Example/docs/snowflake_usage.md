@@ -35,7 +35,7 @@ A gatekeeper function that returns credentials only when provided with the corre
 
 **Example:**
 ```jsl
-secrets = get secrets("wouldntYouLikeToKnow");
+secrets = get secrets("[your access key]");
 // Returns: ["UserName" => "username", "Password" => "password"]
 ```
 
@@ -49,10 +49,10 @@ Creates and returns a Snowflake database connection object using secured credent
 
 **Configuration includes:**
 - Driver: SnowflakeDSIIDriver
-- Database: SYSCHEM_RESEARCH_POC
-- Server: idexx.us-east-1.snowflakecomputing.com
-- Warehouse: CAGVETLABRD_ANALYTICAL_WH
-- Role: U226ADMIN
+- Database: [YOUR_DATABASE_NAME]
+- Server: [your-company].us-east-1.snowflakecomputing.com
+- Warehouse: [YOUR_WAREHOUSE_NAME]
+- Role: [YOUR_ROLE_NAME]
 
 **Example:**
 ```jsl
@@ -71,7 +71,7 @@ Executes a SQL query and returns a clean JMP data table without embedded scripts
 
 **Example:**
 ```jsl
-query = "SELECT * FROM table WHERE date >= '2025-01-01'";
+query = "SELECT * FROM [your_table] WHERE date >= '2025-01-01'";
 tbl = snowflake_scrubbed_query("My Query Results", query);
 ```
 
@@ -84,9 +84,9 @@ include("snowflake_connection_encrypted.jsl");
 
 // Define your SQL query
 query = "SELECT DISTINCT *
-FROM syschem_research_poc.dsi_catalyst_prod_logs.cat1_progcurve_clv_naming_test1
-WHERE \!"true_run_start\!" BETWEEN '2025-04-25' AND CURRENT_DATE()
-AND \!"chem_code\!" = 33";
+FROM [database].[schema].[table_name]
+WHERE \!"[date_column]\!" BETWEEN '2025-04-25' AND CURRENT_DATE()
+AND \!"[filter_column]\!" = [filter_value]";
 
 // Execute query and get results in a JMP table
 tbl = snowflake_scrubbed_query("Scrubbed table", query);
@@ -99,9 +99,9 @@ New SQL Query(
     QueryName( "CAT1_PROGCURVE" ),
     CustomSQL(
         "SELECT DISTINCT *
-        FROM syschem_research_poc.dsi_catalyst_prod_logs.cat1_progcurve_clv_naming_test1
-        WHERE \!"true_run_start\!" BETWEEN '2025-04-25' AND CURRENT_DATE()
-        AND \!"chem_code\!" = 33"
+        FROM [database].[schema].[table_name]
+        WHERE \!"[date_column]\!" BETWEEN '2025-04-25' AND CURRENT_DATE()
+        AND \!"[filter_column]\!" = [filter_value]"
     )
 ) << Run Foreground;
 ```
@@ -123,7 +123,7 @@ Names default to here(1);
 include("your_snowflake_connection.jsl");
 
 // Execute query and get clean results
-query = "SELECT * FROM my_table WHERE date >= '2025-01-01'";
+query = "SELECT * FROM [your_table] WHERE date >= '2025-01-01'";
 tbl = snowflake_scrubbed_query("My Results", query);
 ```
 
@@ -163,7 +163,7 @@ Modify the `create_snowflake_connection()` function to adjust:
 
 ## Notes
 
-- The template uses placeholder credentials from "The Princess Bride" for memorable examples
+- The template uses placeholder credentials for example purposes
 - The `snowflake_scrubbed_query()` function removes embedded scripts from result tables for cleaner data handling
 - JMP encryption (`//-e12.1` header) provides basic credential protection
 

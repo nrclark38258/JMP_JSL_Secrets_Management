@@ -92,8 +92,8 @@ RnD_JSL_Secrets_Management/
 
 ## Conference Presentation
 
-This entire repository was presented at **JMP Discovery 2025**:
-**[The Secret is Out! Oh Wait, No It's Not](https://community.jmp.com/t5/Abstracts/The-Secret-is-Out-Oh-Wait-No-It-s-Not-2025-US-30MP-2510/ev-p/884381?profile.language=en)** - Demonstrating secure credential management patterns in analytical workflows across multiple integration examples.
+This entire repository was presented at **[Conference Name]**:
+**[Presentation Title]([conference URL])** - Demonstrating secure credential management patterns in analytical workflows across multiple integration examples.
 
 ## Getting Started
 

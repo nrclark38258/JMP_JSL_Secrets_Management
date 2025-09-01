@@ -51,7 +51,7 @@ Recursively searches Box folders for files matching specified criteria.
 
 **Example:**
 ```jsl
-files = recursive_search_files_jsl("332509763387", ".jmp", 5);
+files = recursive_search_files_jsl("[folder_id]", ".jmp", 5);
 ```
 
 ### 3. `download_box_files(found_files, download_folder)`
@@ -100,16 +100,16 @@ main_box_connection();
 ## Sample Output
 
 ```
-Successfully authenticated as: John Doe (ID: 12345)
+Successfully authenticated as: [User Name] (ID: [user_id])
 
 ============================================================
 Starting recursive file search...
 Searching for files ending with '.jmp'
-Starting from folder ID: 332509763387
+Starting from folder ID: [folder_id]
 ============================================================
-Searching in folder: Analytics Projects (ID: 332509763387)
-  📁 Folder: Reports (ID: 445566778899)
-    ✓ FOUND: analysis.jmp (ID: 123456789)
+Searching in folder: [Folder Name] (ID: [folder_id])
+  📁 Folder: [Subfolder Name] (ID: [subfolder_id])
+    ✓ FOUND: [filename].jmp (ID: [file_id])
 ============================================================
 Search completed! Found 1 files with suffix '.jmp'
 ```
@@ -133,7 +133,7 @@ This Box integration implements the [enterprise security patterns](../../README.
 
 ## Configuration
 
-Both implementations search for `.jmp` files starting from folder ID `332509763387` with a maximum depth of 5 levels. Modify these parameters in the respective files to customize your search.
+Both implementations search for `.jmp` files starting from folder ID `[folder_id]` with a maximum depth of 5 levels. Modify these parameters in the respective files to customize your search.
 
 ## Box API Endpoints
 
@@ -163,7 +163,7 @@ The Box integration follows this simplified workflow:
 
 | Constant | Default Value | Purpose |
 |----------|---------------|---------|
-| `DEFAULT_FOLDER_ID` | "332509763387" | Box folder to search |
+| `DEFAULT_FOLDER_ID` | "[folder_id]" | Box folder to search |
 | `DEFAULT_FILE_SUFFIX` | ".jmp" | File extension filter |
 | `DEFAULT_MAX_DEPTH` | 5 | Recursion limit |
 | `DEFAULT_DOWNLOAD_FOLDER` | "Test Files/" | Local download path |
