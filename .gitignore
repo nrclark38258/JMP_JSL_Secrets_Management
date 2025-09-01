@@ -1,0 +1,19 @@
+#ignore manually added libraries and utilities
+*_raw.jsl
+
+# IDE and editor files
+# VS Code workspace settings
+.vscode/
+
+# IntelliJ IDEA project files
+.idea/
+
+# Vim swap and backup files
+*.swp
+*.swo
+*~
+
+# Other common editor temporary files
+*.bak
+.*.swp
+.*.swo

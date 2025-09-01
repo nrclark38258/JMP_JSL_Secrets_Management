@@ -1,0 +1,688 @@
+/*Author(s)
+Sage Darling, [email]
+@sage-darling
+A JSL script for Box API integration with JWT authentication and file management capabilities.
+This script uses encrypted_secrets.jsl for secure credential management.
+Copyright 2025
+*/
+
+names default to here(1);
+
+// Include encrypted secrets file for secure credential management
+Include("box_connection_encrypted.jsl");
+//Include("box_connection_raw.jsl");
+
+// Configuration constants
+DEFAULT_FOLDER_ID = "[default folder id]";  // Default Box folder ID to start searching from
+DEFAULT_FILE_SUFFIX = ".jmp";        // Default file suffix to search for
+DEFAULT_MAX_DEPTH = 5;               // Default maximum recursion depth
+DEFAULT_DOWNLOAD_FOLDER = "[default local folder]";  // Default local download folder
+DEFAULT_CONCAT_FILE = "[default concatenated output file]";  // Default concatenated output file
+
+// Define recursive file search function
+recursive_search_files_jsl = Function({access_token, folder_id, file_suffix, max_depth, current_depth}, {default local},
+	/*
+	    Recursively searches through Box folders to find files with a specific suffix.
+
+	    Args:
+	        access_token: The Box API access token for authentication.
+	        folder_id: The Box folder ID to start the search from.
+	        file_suffix: The file extension/suffix to search for (e.g., ".jmp").
+	        max_depth: The maximum depth of folder recursion to prevent infinite loops.
+	        current_depth: The current recursion depth (used internally for tracking).
+
+	    Returns:
+	        found_files: An array of associative arrays containing file information:
+	        name: The file name
+	        id: The Box file ID
+	        folder_path: The folder path where the file was found
+	        folder_id: The Box folder ID containing the file
+
+	    Testing Variables:
+	        access_token = "your_box_access_token_here";
+	        folder_id = "332509763387";
+	        file_suffix = ".jmp";
+	        max_depth = 5;
+	        current_depth = 0;
+	*/
+
+	found_files = {};
+
+	// Check depth limit
+	If( current_depth > max_depth,
+		indent = "";
+		For( d = 1, d <= current_depth, d++, indent = indent || "  " );
+		Print( indent || "Max depth reached, skipping deeper levels" );
+		Return( found_files );
+	);
+
+	Try(
+		// Get folder information
+		folder_info_headers = Associative Array();
+		folder_info_headers["Authorization"] = "Bearer " || access_token;
+		folder_info_headers["Accept"] = "application/json";
+
+		folder_info_request = HTTP Request(
+			Method("GET"),
+			Url("https://api.box.com/2.0/folders/" || folder_id),
+			Headers(folder_info_headers)
+		);
+
+		folder_info_response = folder_info_request << Send;
+		folder_info_status = folder_info_request << getStatus;
+
+		If( folder_info_status != 200,
+			indent = "";
+			For( d = 1, d <= current_depth, d++, indent = indent || "  " );
+			Print( indent || "❌ Error accessing folder " || folder_id || ": HTTP " || Char( folder_info_status ) );
+			Return( found_files );
+		);
+
+		folder_info_data = Parse JSON( folder_info_response );
+
+		// Create indentation for display
+		indent = "";
+		For( d = 1, d <= current_depth, d++, indent = indent || "  " );
+		Print( indent || "Searching in folder: " || folder_info_data["name"] || " (ID: " || folder_id || ")" );
+
+		// Get folder items
+		folder_items_headers = Associative Array();
+		folder_items_headers["Authorization"] = "Bearer " || access_token;
+		folder_items_headers["Accept"] = "application/json";
+
+		folder_items_request = HTTP Request(
+			Method("GET"),
+			Url("https://api.box.com/2.0/folders/" || folder_id || "/items?limit=1000"),
+			Headers(folder_items_headers)
+		);
+
+		folder_items_response = folder_items_request << Send;
+		folder_items_status = folder_items_request << getStatus;
+
+		If( folder_items_status != 200,
+			Print( indent || "❌ Error getting folder items: HTTP " || Char( folder_items_status ) );
+			Return( found_files );
+		);
+
+		folder_items_data = Parse JSON( folder_items_response );
+
+		// Create item indentation
+		item_indent = indent || "  ";
+
+		// Process each item in the folder
+		For( i = 1, i <= N Items( folder_items_data["entries"] ), i++,
+			item = folder_items_data["entries"][i];
+
+			If( item["type"] == "file",
+				// Check if file matches suffix
+				If( Right( item["name"], Length( file_suffix ) ) == file_suffix,
+					// Found a matching file
+					file_info = Associative Array();
+					file_info["name"] = item["name"];
+					file_info["id"] = item["id"];
+					file_info["folder_path"] = folder_info_data["name"];
+					file_info["folder_id"] = folder_id;
+
+					Insert Into( found_files, file_info );
+					Print( item_indent || "✓ FOUND: " || item["name"] || " (ID: " || item["id"] || ")" );
+				,
+					Print( item_indent || "File: " || item["name"] );
+				);
+			,
+				If( item["type"] == "folder",
+					Print( item_indent || "📁 Folder: " || item["name"] || " (ID: " || item["id"] || ")" );
+
+					// Recursively search subfolder
+					subfolder_files = recursive_search_files_jsl( access_token, item["id"], file_suffix, max_depth, current_depth + 1 );
+
+					// Add subfolder results to our results
+					For( j = 1, j <= N Items( subfolder_files ), j++,
+						Insert Into( found_files, subfolder_files[j] );
+					);
+				);
+			);
+		);
+
+	,
+		// Error handling
+		indent = "";
+		For( d = 1, d <= current_depth, d++, indent = indent || "  " );
+		Print( indent || "❌ Error accessing folder " || folder_id || ": Unknown error occurred" );
+	);
+
+	Return( found_files );
+);
+
+// Python package installation function
+install_python_packages = Function({}, {default local},
+	/*
+	    Installs required Python packages for Box API JWT authentication.
+
+	    Args:
+	        None
+
+	    Returns:
+	        success: 1 if installation succeeded, 0 if failed
+
+	    Testing Variables:
+	        None - function handles installation internally
+	*/
+	Try(
+		Python Install Packages( "--trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org PyJWT cryptography" );
+		Print("Python packages installed successfully");
+		Return(1);
+	,
+		Print("Warning: Could not install Python packages");
+		Print("You may need to install manually: pip install PyJWT cryptography");
+		Return(0);
+	);
+);
+
+// Box authentication test function
+test_box_authentication = Function({access_token}, {default local},
+	/*
+	    Tests Box API authentication by retrieving current user information.
+
+	    Args:
+	        access_token: The Box API access token from get_box_access_token()
+
+	    Returns:
+	        user_info: Associative array containing user information:
+	        name: User's display name
+	        id: User's Box ID
+	        success: 1 if authentication succeeded, 0 if failed
+
+	    Testing Variables:
+	        access_token = "your_box_access_token_here";
+	*/
+
+	// Input validation
+	If( Is Missing(access_token) | access_token == "",
+		Throw( "access_token is required and cannot be empty" );
+	);
+
+	// Test the access token by getting current user info
+	Print( "Testing authentication by getting user info..." );
+
+	// Prepare user request headers using AssociativeArray pattern
+	user_headers = Associative Array();
+	user_headers["Authorization"] = "Bearer " || access_token;
+	user_headers["Accept"] = "application/json";
+
+	user_request = HTTP Request(
+		Method("GET"),
+		Url("https://api.box.com/2.0/users/me"),
+		Headers(user_headers)
+	);
+
+	user_data_response = user_request << Send;
+	user_status = user_request << getStatus;
+
+	If( user_status == 200,
+		user_data = Parse JSON( user_data_response );
+		Print( "Successfully authenticated as: " || user_data["name"] || " (ID: " || user_data["id"] || ")" );
+
+		// Return user information
+		result = Associative Array();
+		result["name"] = user_data["name"];
+		result["id"] = user_data["id"];
+		result["success"] = 1;
+
+		Return( result );
+	,
+		Print( "Authentication test failed - User request status: " || Char( user_status ) );
+		// Note: User response not logged for security reasons
+
+		result = Associative Array();
+		result["success"] = 0;
+		result["error_status"] = user_status;
+
+		Return( result );
+	);
+);
+
+// Box file search wrapper function
+search_box_files = Function({access_token, folder_id, file_suffix, max_depth}, {default local},
+	/*
+	    Performs a recursive search for files with specified suffix in Box folders.
+
+	    Args:
+	        access_token: The Box API access token for authentication.
+	        folder_id: The Box folder ID to start searching from.
+	        file_suffix: The file extension/suffix to search for (e.g., ".jmp").
+	        max_depth: The maximum depth of folder recursion.
+
+	    Returns:
+	        found_files: Array of associative arrays containing file information
+
+	    Testing Variables:
+	        access_token = "your_box_access_token_here";
+	        folder_id = "332509763387";
+	        file_suffix = ".jmp";
+	        max_depth = 5;
+	*/
+
+	// Input validation
+	If( Is Missing(access_token) | access_token == "",
+		Throw( "access_token is required and cannot be empty" );
+	);
+	If( Is Missing(folder_id) | folder_id == "",
+		Throw( "folder_id is required and cannot be empty" );
+	);
+	If( Is Missing(file_suffix) | file_suffix == "",
+		Throw( "file_suffix is required and cannot be empty" );
+	);
+	If( Is Missing(max_depth) | !Is Number(max_depth) | max_depth < 0,
+		max_depth = 5; // Default value
+	);
+
+	Print( "\!N============================================================" );
+	Print( "Starting recursive file search..." );
+	Print( "Searching for files ending with '" || file_suffix || "'" );
+	Print( "Starting from folder ID: " || folder_id );
+	Print( "============================================================" );
+
+	// Perform the recursive search
+	found_files = recursive_search_files_jsl( access_token, folder_id, file_suffix, max_depth, 0 );
+
+	// Display results
+	Print( "============================================================" );
+	Print( "Search completed! Found " || Char( N Items( found_files ) ) || " files with suffix '" || file_suffix || "':" );
+
+	If( N Items( found_files ) > 0,
+		For( i = 1, i <= N Items( found_files ), i++,
+			file_info = found_files[i];
+			Print( "\!N" || Char( i ) || ". File: " || file_info["name"] );
+			Print( "   File ID: " || file_info["id"] );
+			Print( "   In folder: " || file_info["folder_path"] || " (ID: " || file_info["folder_id"] || ")" );
+		);
+	,
+		Print( "\!NNo files ending with '" || file_suffix || "' were found in the folder tree." );
+	);
+
+	Return( found_files );
+);
+
+// Box file download function
+download_box_files = Function({access_token, found_files, download_folder}, {default local},
+	/*
+	    Downloads Box files to a local folder.
+
+	    Args:
+	        access_token: The Box API access token for authentication.
+	        found_files: Array of file info from search_box_files() containing file IDs and names.
+	        download_folder: Local folder path where files should be downloaded.
+
+	    Returns:
+	        download_result: Associative array containing:
+	        success: 1 if all downloads succeeded, 0 if any failed
+	        downloaded_count: Number of files successfully downloaded
+	        failed_count: Number of files that failed to download
+	        downloaded_files: Array of successfully downloaded file paths
+	        failed_files: Array of files that failed to download
+
+	    Testing Variables:
+	        access_token = "your_box_access_token_here";
+	        found_files = {{"name" => "test.jmp", "id" => "123456"}};
+	        download_folder = "/path/to/download/folder";
+	*/
+
+	// Input validation
+	If( Is Missing(access_token) | access_token == "",
+		Throw( "access_token is required and cannot be empty" );
+	);
+	If( N Items(found_files) == 0,
+		Throw( "found_files is required and cannot be empty" );
+	);
+	If( Is Missing(download_folder) | download_folder == "",
+		Throw( "download_folder is required and cannot be empty" );
+	);
+
+	// Initialize result tracking
+	downloaded_files = {};
+	failed_files = {};
+	downloaded_count = 0;
+	failed_count = 0;
+
+	Print( "\!N============================================================" );
+	Print( "Starting download of " || Char( N Items( found_files ) ) || " files..." );
+	Print( "Download folder: " || download_folder );
+	Print( "============================================================" );
+
+	// Create download folder if it doesn't exist
+	Try(
+		Create Directory( download_folder );
+	,
+		// Folder might already exist, that's okay
+	);
+
+	// Download each file
+	For( i = 1, i <= N Items( found_files ), i++,
+		file_info = found_files[i];
+		file_id = file_info["id"];
+		file_name = file_info["name"];
+		local_file_path = download_folder || "/" || file_name;
+
+		Print( "\!N" || Char( i ) || "/" || Char( N Items( found_files ) ) || ": Downloading " || file_name || "..." );
+
+		Try(
+			// Prepare download request headers
+			download_headers = Associative Array();
+			download_headers["Authorization"] = "Bearer " || access_token;
+
+			// Make download request
+			download_request = HTTP Request(
+				Method("GET"),
+				Url("https://api.box.com/2.0/files/" || file_id || "/content"),
+				Headers(download_headers)
+			);
+
+			// Send request and get file content
+			file_content = download_request << Send;
+			download_status = download_request << getStatus;
+
+			If( download_status == 200,
+				// Write file to local folder
+				Try(
+					Save Text File( local_file_path, file_content );
+					Print( "   ✓ Successfully downloaded: " || file_name );
+					Insert Into( downloaded_files, local_file_path );
+					downloaded_count = downloaded_count + 1;
+				,
+					Print( "   ❌ Failed to save file locally: " || file_name );
+					Print( "   Error: " || exception_msg );
+					Insert Into( failed_files, file_name );
+					failed_count = failed_count + 1;
+				);
+			,
+				Print( "   ❌ Download failed for: " || file_name );
+				Print( "   HTTP Status: " || Char( download_status ) );
+				Insert Into( failed_files, file_name );
+				failed_count = failed_count + 1;
+			);
+		,
+			Print( "   ❌ Error downloading: " || file_name );
+			Print( "   Error: " || exception_msg );
+			Insert Into( failed_files, file_name );
+			failed_count = failed_count + 1;
+		);
+	);
+
+	// Display summary
+	Print( "============================================================" );
+	Print( "Download Summary:" );
+	Print( "✓ Successfully downloaded: " || Char( downloaded_count ) || " files" );
+	Print( "❌ Failed downloads: " || Char( failed_count ) || " files" );
+	Print( "============================================================" );
+
+	// Return result
+	result = Associative Array();
+	result["success"] = If( failed_count == 0, 1, 0 );
+	result["downloaded_count"] = downloaded_count;
+	result["failed_count"] = failed_count;
+	result["downloaded_files"] = downloaded_files;
+	result["failed_files"] = failed_files;
+
+	Return( result );
+);
+
+// JMP file concatenation function
+concatenate_jmp_files = Function({download_folder, file_suffix, output_file_path}, {default local},
+	/*
+	    Opens and concatenates JMP files from a folder into a single data table.
+
+	    Args:
+	        download_folder: Folder containing the downloaded JMP files.
+	        file_suffix: File suffix to look for (e.g., ".jmp").
+	        output_file_path: Path where the concatenated JMP file should be saved.
+
+	    Returns:
+	        concat_result: Associative array containing:
+	                      - success: 1 if concatenation succeeded, 0 if failed
+	                      - output_file: Path to the concatenated file
+	                      - files_processed: Number of files successfully processed
+	                      - error_message: Error description (if concatenation failed)
+
+	    Testing Variables:
+	        download_folder = "C:\path\to\download\folder";
+	        file_suffix = ".jmp";
+	        output_file_path = "C:\path\to\output\concatenated.jmp";
+	*/
+
+	// Input validation
+	If( Is Missing(download_folder) | download_folder == "",
+		result = Associative Array();
+		result["success"] = 0;
+		result["error_message"] = "Download folder path is required";
+		Return( result );
+	);
+	If( Is Missing(output_file_path) | output_file_path == "",
+		result = Associative Array();
+		result["success"] = 0;
+		result["error_message"] = "Output file path is required";
+		Return( result );
+	);
+
+	Print( "\!N============================================================" );
+	Print( "Starting JMP file concatenation..." );
+	Print( "Source folder: " || download_folder );
+	Print( "Output file: " || output_file_path );
+	Print( "============================================================" );
+
+	Try(
+		// Get list of JMP files in the download folder
+		file_list = Files In Directory( download_folder );
+		jmp_files = {};
+
+		// Filter for JMP files
+		For( i = 1, i <= N Items( file_list ), i++,
+			If( Right( file_list[i], Length( file_suffix ) ) == file_suffix,
+				Insert Into( jmp_files, file_list[i] );
+			);
+		);
+
+		If( N Items( jmp_files ) == 0,
+			result = Associative Array();
+			result["success"] = 0;
+			result["error_message"] = "No JMP files found in download folder";
+			Return( result );
+		);
+
+		Print( "Found " || Char( N Items( jmp_files ) ) || " JMP files to concatenate." );
+
+		// Open all JMP files
+		dataTableCatcher = {};
+
+		For( i = 1, i <= N Items( jmp_files ), i++,
+			file_name = jmp_files[i];
+			full_path = download_folder || "\" || file_name;
+
+			Print( "Opening file " || Char( i ) || "/" || Char( N Items( jmp_files ) ) || ": " || file_name );
+
+			Try(
+				current_dt = Open( full_path, Invisible );
+				Insert Into( dataTableCatcher, current_dt );
+				Print( "   ✓ Opened: " || file_name );
+			,
+				Print( "   ❌ Failed to open: " || file_name );
+			);
+		);
+
+		// Concatenate using your clean approach
+		If(
+			N Items( dataTableCatcher ) == 0,
+			Print( "No data tables opened successfully!" );
+			Throw( "No files were successfully opened" );
+			,
+			N Items( dataTableCatcher ) == 1,
+			concatTable = dataTableCatcher[1];
+			Print( "   ✓ Single file - using as final table." );
+			,
+			concatTable = dataTableCatcher[1] << Concatenate( dataTableCatcher[2 :: N Items( dataTableCatcher )], create source column, Output Table Name( "Combined Data" ) );
+			For Each( {dt}, dataTableCatcher, Close( dt, NoSave ) );
+			Print( "   ✓ Concatenated " || Char( N Items( dataTableCatcher ) ) || " tables successfully!" );
+		);
+
+		files_processed = N Items( dataTableCatcher );
+
+		// Save the combined data table
+		Print( "\!nSaving concatenated data table..." );
+		concatTable << Save As( output_file_path );
+		// Leave the concatenated table open for user review
+
+		// Display summary
+		Print( "============================================================" );
+		Print( "Concatenation Summary:" );
+		Print( "✓ Files processed: " || Char( files_processed ) || "/" || Char( N Items( jmp_files ) ) );
+		Print( "✓ Output file: " || output_file_path );
+		Print( "============================================================" );
+
+		// Return success result
+		result = Associative Array();
+		result["success"] = 1;
+		result["output_file"] = output_file_path;
+		result["files_processed"] = files_processed;
+
+		Return( result );
+
+	,
+		// Handle concatenation errors
+		Print( "❌ Error during JMP file concatenation" );
+
+		result = Associative Array();
+		result["success"] = 0;
+		result["error_message"] = "JMP file concatenation failed";
+		result["files_processed"] = 0;
+
+		Return( result );
+	);
+);
+
+// Main execution function
+main_box_connection = Function({}, {default local},
+	/*
+	    Main function to execute the complete Box API connection and file search workflow.
+
+	    Args:
+	        None - uses default configuration values and reads credentials from encrypted secrets
+
+	    Returns:
+	        result: Associative array containing:
+	               - success: 1 if entire workflow succeeded, 0 if failed
+	               - found_files: Array of found files (if search was successful)
+	               - error_message: Error description (if workflow failed)
+
+	    Testing Variables:
+	        None - function uses internal configuration and encrypted secrets
+	*/
+	// Install Python packages
+	package_success = install_python_packages();
+
+	// Get access token using secure functions from encrypted secrets
+	access_token = get box access token();
+
+	// Test authentication
+	auth_result = test_box_authentication( access_token );
+	If( auth_result["success"] != 1,
+		result = Associative Array();
+		result["success"] = 0;
+		result["error_message"] = "Authentication test failed";
+		Return( result );
+	);
+
+	// Perform file search with default configuration
+	found_files = search_box_files( access_token, DEFAULT_FOLDER_ID, DEFAULT_FILE_SUFFIX, DEFAULT_MAX_DEPTH );
+
+	// Download found files if any were discovered
+	download_result = Associative Array();
+	If( N Items( found_files ) > 0,
+		download_result = download_box_files( access_token, found_files, DEFAULT_DOWNLOAD_FOLDER );
+	,
+		Print( "\!NNo files found to download." );
+		download_result["success"] = 1;
+		download_result["downloaded_count"] = 0;
+		download_result["failed_count"] = 0;
+		download_result["downloaded_files"] = {};
+		download_result["failed_files"] = {};
+	);
+
+	// Concatenate downloaded files if any were successfully downloaded
+	concat_result = Associative Array();
+	If( download_result["success"] == 1 & download_result["downloaded_count"] > 0,
+		concat_result = concatenate_jmp_files( DEFAULT_DOWNLOAD_FOLDER, DEFAULT_FILE_SUFFIX, DEFAULT_CONCAT_FILE );
+	,
+		If( download_result["downloaded_count"] == 0,
+			Print( "\!NNo files available for concatenation." );
+		);
+		concat_result["success"] = 1;
+		concat_result["files_processed"] = 0;
+		concat_result["output_file"] = "";
+	);
+
+	// Upload concatenated file back to Box if concatenation was successful
+	/*upload_result = Associative Array();
+	If( concat_result["success"] == 1 & concat_result["files_processed"] > 0,
+		upload_filename = "concatenated_jokes.jmp";
+		upload_result = upload_file_to_box( access_token, concat_result["output_file"], DEFAULT_FOLDER_ID, upload_filename );
+	,
+		If( concat_result["files_processed"] == 0,
+			Print( "\!NNo concatenated file to upload." );
+		);
+		upload_result["success"] = 1;
+		upload_result["file_id"] = "";
+		upload_result["upload_filename"] = "";
+	);
+	*/
+	// Return success result
+	result = Associative Array();
+	result["success"] = If( download_result["success"] == 1 & concat_result["success"] == 1 /*& upload_result["success"] == 1*/, 1, 0 );
+	result["found_files"] = found_files;
+	result["download_result"] = download_result;
+	result["concat_result"] = concat_result;
+	/*result["upload_result"] = upload_result;*/
+	If( result["success"] == 0,
+		result["error_message"] = "Workflow failed during one of the processing steps";
+	);
+
+	Return( result );
+);
+
+// Execute the main Box connection workflow
+Print( "Starting Box API connection and file search..." );
+result = main_box_connection();
+
+// Display final result
+If( result["success"] == 1,
+	Print( "\!N🎉 Box connection workflow completed successfully!" );
+	Print( "Found " || Char( N Items( result["found_files"] ) ) || " matching files." );
+	Try(
+		download_info = result["download_result"];
+		Print( "Downloaded " || Char( download_info["downloaded_count"] ) || " files successfully." );
+		If( download_info["failed_count"] > 0,
+			Print( "Failed to download " || Char( download_info["failed_count"] ) || " files." );
+		);
+	,
+		// download_result key doesn't exist, skip download info
+	);
+	Try(
+		concat_info = result["concat_result"];
+		If( concat_info["files_processed"] > 0,
+			Print( "Concatenated " || Char( concat_info["files_processed"] ) || " files into: " || concat_info["output_file"] );
+		);
+	,
+		// concat_result key doesn't exist, skip concatenation info
+	);
+	/*Try(
+		upload_info = result["upload_result"];
+		If( upload_info["file_id"] != "",
+			Print( "Uploaded concatenated file to Box as: " || upload_info["upload_filename"] );
+			Print( "Box file ID: " || upload_info["file_id"] );
+		);
+	,
+		// upload_result key doesn't exist, skip upload info
+	);
+	*/
+,
+	Print( "\!N❌ Box connection workflow failed!" );
+	Print( "Error: " || result["error_message"] );
+);

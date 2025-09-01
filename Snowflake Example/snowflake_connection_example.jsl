@@ -1,0 +1,42 @@
+/* Author:
+	Nathan Clark, nrclark@gmail.com
+	@nrclark38258
+	Copyright 2025
+*/
+
+Names default to here(1);
+include("snowflake_connection_encrypted.jsl");
+//include("snowflake_connection_raw.jsl");
+
+/*
+The first example demonstrates how to create a new SQL query using the Snowflake connection directly in the JSL query.
+The query string is input into the CustomSQL parameter.
+
+The resulting table has table scripts that do hide user name and password, but other aspects of the query are visible.
+Example 2 handles those risks.
+*/
+New SQL Query(
+	Connection( create_snowflake_connection() ),
+	QueryName( "inline_test" ),
+	/*Select( Distinct, Column( "SAP", "t1" ) ),
+	From(
+		Table( "CAT1_PROGCURVE", Schema( "DSI_CATALYST_PROD_LOGS" ), Alias( "t1" ) )
+	)*/
+	/*CustomSQL(
+		"select distinct t1.sap
+		from dsi_catalyst_prod_logs.cat1_progcurve t1"
+	)*/
+	CustomSQL(
+		"SELECT * FROM test_table"
+	)
+) << Run Foreground; //can also be Run;
+
+/*
+The second example demonstrates how to create a new SQL query using an embedded function with does the query and then
+strips the resulting JMP data table of the table scripts to further reduce the risk of sensitive information exposure.
+*/
+query = "
+SELECT * FROM test_table
+";
+
+tbl = snowflake_scrubbed_query("scrub_test", query);
