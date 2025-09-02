@@ -1,0 +1,296 @@
+/*Author(s)
+Sage Darling, sagetaliya.darling@gmail.com
+@sage-darling
+A JSL script for Box API integration with JWT authentication and file management capabilities.
+This script uses encrypted_secrets.jsl for secure credential management.
+Copyright 2025
+*/
+
+
+// secrets.jsl (encrypt me)
+Names Default To Here(1);
+get secrets = Function({key},
+    If(key != "boxAccessKey",
+		Throw("Access denied")
+	);
+	["clientID" => "your_client_id_here",
+	"clientSecret" => "your_client_secret_here",
+	"publicKeyID" => "your_public_key_id_here",
+	"privateKey" => "-----BEGIN ENCRYPTED PRIVATE KEY-----
+	....
+	-----END ENCRYPTED PRIVATE KEY-----
+",
+	"passphrase" => "your_passphrase_here",
+	"enterpriseID" => "your_enterprise_id_here",
+	"account" => "your_account@yourdomain.com"
+	]
+);
+
+get box client id = Function({}, {default local},
+    secrets = get secrets("boxAccessKey");
+    secrets["clientID"];
+);
+
+get box client secret = Function({}, {default local},
+    secrets = get secrets("boxAccessKey");
+    secrets["clientSecret"];
+);
+
+get box public key id = Function({}, {default local},
+    secrets = get secrets("boxAccessKey");
+    secrets["publicKeyID"];
+);
+
+get box private key = Function({}, {default local},
+    secrets = get secrets("boxAccessKey");
+    secrets["privateKey"];
+);
+
+get box passphrase = Function({}, {default local},
+    secrets = get secrets("boxAccessKey");
+    secrets["passphrase"];
+);
+
+get box enterprise id = Function({}, {default local},
+    secrets = get secrets("boxAccessKey");
+    secrets["enterpriseID"];
+);
+
+get box account = Function({}, {default local},
+	secrets = get secrets("boxAccessKey");
+	secrets["account"];
+);
+
+get box jwt token = Function({}, {default local},
+	/*
+	Generates a JWT assertion token for Box API authentication using encrypted credentials.
+
+	Args:
+		None - retrieves credentials from encrypted secrets
+
+	Returns:
+		jwt_assertion: The generated JWT assertion string for Box API authentication
+	*/
+
+	// Get credentials from encrypted secrets using individual functions
+	enterprise_id = get box enterprise id();
+	client_id = get box client id();
+	public_key_id = get box public key id();
+	private_key = get box private key();
+	passphrase = get box passphrase();
+
+	// Input validation
+	If( Is Missing(enterprise_id) | enterprise_id == "",
+		Throw( "enterprise_id is required and cannot be empty" );
+	);
+	If( Is Missing(client_id) | client_id == "",
+		Throw( "client_id is required and cannot be empty" );
+	);
+	If( Is Missing(public_key_id) | public_key_id == "",
+		Throw( "public_key_id is required and cannot be empty" );
+	);
+	If( Is Missing(private_key) | private_key == "",
+		Throw( "private_key is required and cannot be empty" );
+	);
+	If( Is Missing(passphrase),
+		passphrase = ""; // Set to empty string if missing
+	);
+
+	Print( "Generating JWT assertion..." );
+
+	// Pass configuration to Python
+	Python Send( client_id );
+	Python Send( enterprise_id );
+	Python Send( public_key_id );
+	Python Send( private_key );
+	Python Send( passphrase );
+
+	Python Submit("\[
+import json
+import jwt
+import time
+import uuid
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+
+try:
+    # JWT header
+    header = {
+        'alg': 'RS256',
+        'typ': 'JWT',
+        'kid': public_key_id
+    }
+
+    # JWT payload
+    now = int(time.time())
+    payload = {
+        'iss': client_id,
+        'sub': enterprise_id,
+        'box_sub_type': 'enterprise',
+        'aud': 'https://api.box.com/oauth2/token',
+        'jti': str(uuid.uuid4()),
+        'exp': now + 60,
+        'iat': now
+    }
+
+    # Load private key
+    if passphrase:
+        passphrase = passphrase.encode('utf-8')
+    else:
+        passphrase = None
+
+    private_key_obj = serialization.load_pem_private_key(
+        private_key.encode('utf-8'),
+        password=passphrase,
+        backend=default_backend()
+    )
+
+    # Create JWT
+    jwt_assertion = jwt.encode(payload, private_key_obj, algorithm='RS256', headers=header)
+    jwt_error = None
+
+    # Security: Clear sensitive data from memory immediately after JWT creation
+    del client_id
+    del enterprise_id
+    del public_key_id
+    del private_key
+    del passphrase
+    del private_key_obj
+    del payload
+    del header
+
+except Exception as e:
+    jwt_assertion = None
+    jwt_error = str(e)
+
+    # Security: Clear sensitive data even on error
+    try:
+        del client_id
+        del enterprise_id
+        del public_key_id
+        del private_key
+        del passphrase
+    except NameError:
+        pass  # Variables may not exist if error occurred early
+]\");
+
+	// Get the results from Python
+	jwt_assertion = Python Get( jwt_assertion );
+	jwt_error = Python Get( jwt_error );
+
+	// Check if we got an error
+	If( jwt_error != Empty(),
+		Throw( "Python JWT generation failed: " || jwt_error )
+	);
+
+	If( jwt_assertion == Empty(),
+		Throw( "JWT assertion is missing" )
+	);
+
+	Print( "JWT assertion generated successfully" );
+	// Note: JWT assertion not logged for security reasons
+
+	// Security: Clear credentials from local memory immediately
+	enterprise_id = "";
+	client_id = "";
+	public_key_id = "";
+	private_key = "";
+	passphrase = "";
+	secrets = .;
+
+	Return( jwt_assertion );
+);
+
+// Secure Box access token request function
+get box access token = Function({}, {default local},
+	/*
+	    Exchanges a JWT assertion for a Box API access token using encrypted credentials.
+
+	    Args:
+	        None - retrieves credentials from encrypted secrets and generates JWT internally
+
+	    Returns:
+	        access_token: The Box API access token for authentication
+	*/
+
+	// Get JWT assertion using secure function
+	jwt_assertion = get box jwt token();
+
+	// Get credentials from encrypted secrets using individual functions
+	client_id = get box client id();
+	client_secret = get box client secret();
+
+	// Input validation
+	If( Is Missing(jwt_assertion) | jwt_assertion == "",
+		Throw( "jwt_assertion is required and cannot be empty" );
+	);
+	If( Is Missing(client_id) | client_id == "",
+		Throw( "client_id is required and cannot be empty" );
+	);
+	If( Is Missing(client_secret) | client_secret == "",
+		Throw( "client_secret is required and cannot be empty" );
+	);
+
+	// Make the Box API token request
+	token_url = "https://api.box.com/oauth2/token";
+
+	// Prepare headers using AssociativeArray pattern
+	request_headers = Associative Array();
+	request_headers["Content-Type"] = "application/x-www-form-urlencoded";
+	request_headers["Accept"] = "application/json";
+
+	// Make HTTP POST request to get access token
+	Print( "Requesting access token from Box..." );
+
+	response = HTTP Request(
+		Method("POST"),
+		Url(token_url),
+		Headers(request_headers),
+		Form(
+			Fields([
+				["grant_type" => "urn:ietf:params:oauth:grant-type:jwt-bearer",
+				 "assertion" => Char( jwt_assertion ),
+				 "client_id" => client_id,
+				 "client_secret" => client_secret]
+			])
+		)
+	);
+
+	// Send the request and get detailed response info
+	data = response << Send;
+	response_headers = response << getResponseHeaders;
+	status_msg = response << getStatusMSG;
+	status_code = response << getStatus;
+
+	Print( "Response Status: " || Char( status_code ) );
+	Print( "Status Message: " || status_msg );
+	// Note: Response body not logged for security reasons (contains access token)
+
+	// Parse response
+	If( status_code == 200,
+		Try(
+			token_data = Parse JSON( data );
+			access_token = token_data["access_token"];
+			expires_in = token_data["expires_in"];
+
+			Print( "Successfully obtained access token!" );
+			Print( "Token expires in: " || Char( expires_in ) || " seconds" );
+
+			// Security: Clear sensitive data from memory immediately
+			jwt_assertion = "";
+			client_id = "";
+			client_secret = "";
+			secrets = .;
+			token_data = .;
+
+			Return( access_token );
+		,
+			Print( "Failed to parse token response JSON" );
+			Throw( "JSON parsing error" );
+		);
+	,
+		Print( "Token request failed - Status code: " || Char( status_code ) );
+		Print( "Status message: " || status_msg );
+		Throw( "Token request failed with status: " || Char( status_code ) );
+	);
+);
