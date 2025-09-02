@@ -6,7 +6,7 @@ Secure Snowflake database integration demonstrating the [enterprise security pat
 
 This example implements a three-tier credential management approach optimized for database connections:
 
-1. **Template File** - Safe to share, with placeholder credentials  
+1. **Template File** - Safe to share, with placeholder credentials
 2. **Raw File** - Contains actual credentials (gitignored)
 3. **Encrypted File** - Encrypted version for production storage
 
@@ -35,7 +35,7 @@ A gatekeeper function that returns credentials only when provided with the corre
 
 **Example:**
 ```jsl
-secrets = get secrets("[your access key]");
+secrets = get secrets("wouldntyouliketoknow");
 // Returns: ["UserName" => "username", "Password" => "password"]
 ```
 
@@ -50,7 +50,7 @@ Creates and returns a Snowflake database connection object using secured credent
 **Configuration includes:**
 - Driver: SnowflakeDSIIDriver
 - Database: [YOUR_DATABASE_NAME]
-- Server: [your-company].us-east-1.snowflakecomputing.com
+- Server: [your company snowflake server]
 - Warehouse: [YOUR_WAREHOUSE_NAME]
 - Role: [YOUR_ROLE_NAME]
 
@@ -85,8 +85,8 @@ include("snowflake_connection_encrypted.jsl");
 // Define your SQL query
 query = "SELECT DISTINCT *
 FROM [database].[schema].[table_name]
-WHERE \!"[date_column]\!" BETWEEN '2025-04-25' AND CURRENT_DATE()
-AND \!"[filter_column]\!" = [filter_value]";
+WHERE [date column] BETWEEN '2025-04-25' AND CURRENT_DATE()
+AND [filter column] = [filter_value]";
 
 // Execute query and get results in a JMP table
 tbl = snowflake_scrubbed_query("Scrubbed table", query);
@@ -100,8 +100,8 @@ New SQL Query(
     CustomSQL(
         "SELECT DISTINCT *
         FROM [database].[schema].[table_name]
-        WHERE \!"[date_column]\!" BETWEEN '2025-04-25' AND CURRENT_DATE()
-        AND \!"[filter_column]\!" = [filter_value]"
+        WHERE [date column] BETWEEN '2025-04-25' AND CURRENT_DATE()
+        "
     )
 ) << Run Foreground;
 ```
@@ -139,7 +139,7 @@ This Snowflake integration follows the [main security documentation](../../READM
 
 Modify the `create_snowflake_connection()` function to adjust:
 - Database selection and schema
-- Warehouse size and compute resources  
+- Warehouse size and compute resources
 - User roles and permissions
 - Connection timeout parameters
 
@@ -163,7 +163,7 @@ Modify the `create_snowflake_connection()` function to adjust:
 
 ## Notes
 
-- The template uses placeholder credentials for example purposes
+- The template uses placeholder passphrase for example purposes
 - The `snowflake_scrubbed_query()` function removes embedded scripts from result tables for cleaner data handling
 - JMP encryption (`//-e12.1` header) provides basic credential protection
 
